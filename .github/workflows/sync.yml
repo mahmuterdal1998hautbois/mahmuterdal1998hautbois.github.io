@@ -5,6 +5,9 @@ on:
     - cron: '*/30 * * * *' # Her 30 dakikada bir çalışır
   workflow_dispatch: # Manuel olarak da tetiklenebilir
 
+permissions:
+  contents: write
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -62,4 +65,5 @@ jobs:
           git add vehicle_data.json
           git commit -m 'Otomatik Telemetri Güncellemesi' || echo 'Değişiklik yok'
           git push
+
 
