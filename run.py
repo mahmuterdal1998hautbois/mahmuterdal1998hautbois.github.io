@@ -3,34 +3,30 @@ import json
 import os
 
 token = os.getenv('TESLA_ACCESS_TOKEN')
+if not token:
+    print("❌ HATA: TESLA_ACCESS_TOKEN bulunamadı! GitHub Secrets ayarını kontrol edin.")
+    exit(1)
+
 headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
 
-# Önce Avrupa (EU) adresini deniyoruz
-url = 'https://fleet-api.prd.eu.vn.cloud.tesla.com/api/1/vehicles'
-print("Tesla API'ye bağlanılıyor (EU)...")
-v_res = requests.get(url, headers=headers)
-print("Yanıt Kodu:", v_res.status_code)
-print("Ham Yanıt:", v_res.text)
-
-# Eğer EU'dan araç dönmezse, Kuzey Amerika (NA) adresini deneyelim
-data = v_res.json()
-vehicles = data.get('response', [])
-
-if not vehicles:
-    print("\nEU bölgesinde araç bulunamadı, Kuzey Amerika (NA) deneniyor...")
-    url = 'https://fleet-api.prd.na.cloud.tesla.com/api/1/vehicles'
-    v_res = requests.get(url, headers=headers)
-    print("NA Yanıt Kodu:", v_res.status_code)
-    print("NA Ham Yanıt:", v_res.text)
-    vehicles = v_res.json().get('response', [])
-
-if vehicles:
-    vid = vehicles[0].get('id')
-    print(f"\n✅ Araç Bulundu! ID: {vid}")
+try:
+    print("Tesla API'ye bağlanılıyor...")
+    v_res = requests.get('https://fleet-api.prd.eu.vn.cloud.tesla.com/api/1/vehicles', headers=headers)
+    print("Yanıt Kodu:", v_res.status_code)
     
-    # Doğru URL ile veri çekme
-    base_url = url.replace('/vehicles', '')
-    d_res = requests.get(f'{base_url}/vehicles/{vid}/vehicle_data', headers=headers)
+    data = v_res.json()
+    vehicles = data.get('response', [])
+    print(f"Bulunan araç sayısı: {len(vehicles)}")
+    
+    if not vehicles:
+        print("❌ Araç bulunamadı. Yanıt içeriği:", data)
+        exit(1)
+        
+    vid = vehicles[0].get('id')
+    print(f"✅ Araç ID bulundu: {vid}")
+    
+    d_res = requests.get(f'https://fleet-api.prd.eu.vn.cloud.tesla.com/api/1/vehicles/{vid}/vehicle_data', headers=headers)
+    print("Araç Veri Yanıt Kodu:", d_res.status_code)
     
     if d_res.status_code == 200:
         v_data = d_res.json().get('response', {})
@@ -48,8 +44,11 @@ if vehicles:
         
         with open('vehicle_data.json', 'w') as f:
             json.dump(payload, f, indent=4)
-        print('✅ vehicle_data.json başarıyla oluşturuldu!')
+        print('✅ BAŞARILI: vehicle_data.json dosyası oluşturuldu!')
     else:
-        print("Araç verisi alınamadı:", d_res.text)
-else:
-    print("\n❌ Hiçbir bölgede araç bulunamadı. Token'ın izinlerini kontrol etmek gerekebilir.")
+        print("❌ Araç verisi alınamadı. Yanıt:", d_res.text)
+        exit(1)
+
+except Exception as e:
+    print("❌ Beklenmeyen bir hata oluştu:", str(e))
+    exit(1)
