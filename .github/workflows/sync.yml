@@ -48,7 +48,7 @@ jobs:
                       payload = {
                           'battery_level': charge.get('battery_level', 0),
                           'battery_range': round(charge.get('battery_range', 0) * 1.60934, 1),
-                          'odometer': round(v_state.get('odometer', 0) * 1.60934, 1),
+                      'odometer': round(v_state.get('odometer', 0) * 1.60934, 1),
                           'speed': drive.get('speed') or 0,
                           'state': v_data.get('state', 'unknown')
                       }
@@ -58,12 +58,10 @@ jobs:
                       print('Veri başarıyla kaydedildi!')
           "
 
-      - name: Değişiklikleri GitHub'a Otomatik Kaydet
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add vehicle_data.json
-          git commit -m 'Otomatik Telemetri Güncellemesi' || echo 'Değişiklik yok'
-          git push
+      - name: Değişiklikleri Otomatik Kaydet ve Gönder
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          file_pattern: vehicle_data.json
+          commit_message: 'Otomatik Telemetri Güncellemesi'
 
 
