@@ -1,1 +1,65 @@
+name: Tesla Telemetri Senkronizasyonu
+
+on:
+  schedule:
+    - cron: '*/30 * * * *' # Her 30 dakikada bir çalışır
+  workflow_dispatch: # Manuel olarak da tetiklenebilir
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Depoyu Kopyala
+        uses: actions/checkout@v4
+
+      - name: Python Kurulumu
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Gerekli Kütüphaneleri Yükle
+        run: pip install requests
+
+      - name: Tesla Verisini Çek ve Kaydet
+        env:
+          TESLA_ACCESS_TOKEN: ${{ secrets.TESLA_ACCESS_TOKEN }}
+        run: |
+          python3 -c "
+          import requests, json, os
+          token = os.getenv('TESLA_ACCESS_TOKEN')
+          headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+          
+          # Araç ID'sini bul
+          v_res = requests.get('https://fleet-api.prd.eu.vn.cloud.tesla.com/api/1/vehicles', headers=headers)
+          if v_res.status_code == 200:
+              vehicles = v_res.json().get('response', [])
+              if vehicles:
+                  vid = vehicles[0].get('id')
+                  d_res = requests.get(f'https://fleet-api.prd.eu.vn.cloud.tesla.com/api/1/vehicles/{vid}/vehicle_data', headers=headers)
+                  if d_res.status_code == 200:
+                      v_data = d_res.json().get('response', {})
+                      charge = v_data.get('charge_state', {})
+                      drive = v_data.get('drive_state', {})
+                      v_state = v_data.get('vehicle_state', {})
+                      
+                      payload = {
+                          'battery_level': charge.get('battery_level', 0),
+                          'battery_range': round(charge.get('battery_range', 0) * 1.60934, 1),
+                          'odometer': round(v_state.get('odometer', 0) * 1.60934, 1),
+                          'speed': drive.get('speed') or 0,
+                          'state': v_data.get('state', 'unknown')
+                      }
+                      
+                      with open('vehicle_data.json', 'w') as f:
+                          json.dump(payload, f)
+                      print('Veri başarıyla kaydedildi!')
+          "
+
+      - name: Değişiklikleri GitHub'a Otomatik Kaydet
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add vehicle_data.json
+          git commit -m 'Otomatik Telemetri Güncellemesi' || echo 'Değişiklik yok'
+          git push
 
