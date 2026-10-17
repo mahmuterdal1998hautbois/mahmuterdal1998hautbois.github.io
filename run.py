@@ -2,14 +2,43 @@ import requests
 import json
 import os
 
-token = os.getenv('TESLA_ACCESS_TOKEN')
-if not token:
-    print("❌ HATA: TESLA_ACCESS_TOKEN bulunamadı!")
+# GitHub Secrets'tan Refresh Token alınıyor
+refresh_token = os.getenv('TESLA_REFRESH_TOKEN')
+if not refresh_token:
+    print("❌ HATA: TESLA_REFRESH_TOKEN bulunamadı! GitHub Secrets ayarlarını kontrol edin.")
     exit(1)
 
-headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+# Tesla OAuth Token Yenileme (Refresh) Adımı
+print("🔄 Refresh Token kullanılarak yeni Access Token isteniyor...")
+token_url = "https://auth.tesla.com/oauth2/v3/token"
+token_payload = {
+    "grant_type": "refresh_token",
+    "client_id": "ownerapi",  # Resmi olmayan veya standart fleet client ID (gerekirse değiştirilebilir)
+    "refresh_token": refresh_token,
+    "scope": "openid email offline_access vehicle_device_data"
+}
 
-# Test edilecek olası tüm Tesla Fleet API bölgeleri
+try:
+    t_res = requests.post(token_url, json=token_payload, timeout=10)
+    if t_res.status_code != 200:
+        print(f"❌ Token yenilenemedi (Kod: {t_res.status_code}): {t_res.text}")
+        exit(1)
+        
+    token_data = t_res.json()
+    access_token = token_data.get('access_token')
+    if not access_token:
+        print("❌ Yanıttan access_token çıkarılamadı:", token_data)
+        exit(1)
+        
+    print("✅ Yeni Access Token başarıyla alındı!")
+except Exception as e:
+    print("❌ Token yenileme sırasında bağlantı hatası:", str(e))
+    exit(1)
+
+# Yeni token ile API bağlantı ayarları
+headers = {'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'}
+
+# Çoklu bölge taraması (EU, NA, AP)
 regions = [
     ("Avrupa (EU)", "https://fleet-api.prd.eu.vn.cloud.tesla.com"),
     ("Kuzey Amerika (NA)", "https://fleet-api.prd.na.cloud.tesla.com"),
@@ -21,27 +50,21 @@ selected_base_url = ""
 
 for region_name, base_url in regions:
     url = f"{base_url}/api/1/vehicles"
-    print(f"🔍 {region_name} sunucusu deneniyor: {url}")
+    print(f"🔍 {region_name} sunucusu taranıyor...")
     try:
         v_res = requests.get(url, headers=headers, timeout=10)
-        print(f"Yanıt Kodu: {v_res.status_code}")
         if v_res.status_code == 200:
-            data = v_res.json()
-            found = data.get('response', [])
+            found = v_res.json().get('response', [])
             if found:
                 vehicles = found
                 selected_base_url = base_url
-                print(f"✅ BAŞARILI! Araçlar {region_name} bölgesinde bulundu.")
+                print(f"✅ Araç {region_name} bölgesinde bulundu!")
                 break
-            else:
-                print(f"ℹ️ {region_name} yanıt verdi ancak hesapta araç listesi boş.")
-        else:
-            print(f"⚠️ {region_name} hata döndürdü: {v_res.text}")
     except Exception as e:
-        print(f"⚠️ Bağlantı hatası ({region_name}): {str(e)}")
+        print(f"⚠️ {region_name} bağlantı hatası: {str(e)}")
 
 if not vehicles:
-    print("\n❌ Hiçbir bölgede araç bulunamadı. Token'ın süresi dolmuş veya araç listesi izni (vehicle_device_data vb.) eksik olabilir.")
+    print("❌ Hiçbir bölgede araç bulunamadı. Lütfen Refresh Token'ın doğru hesaba ait olduğundan emin olun.")
     exit(1)
 
 vid = vehicles[0].get('id')
@@ -49,7 +72,6 @@ print(f"🚗 Hedef Araç ID: {vid}")
 
 # Araç verilerini çek
 data_url = f"{selected_base_url}/api/1/vehicles/{vid}/vehicle_data"
-print(f"Veriler isteniyor: {data_url}")
 d_res = requests.get(data_url, headers=headers)
 
 if d_res.status_code == 200:
@@ -68,8 +90,7 @@ if d_res.status_code == 200:
     
     with open('vehicle_data.json', 'w') as f:
         json.dump(payload, f, indent=4)
-    print('✅ BAŞARILI: vehicle_data.json dosyası oluşturuldu!')
+    print('✅ BAŞARILI: vehicle_data.json güncellendi!')
 else:
     print(f"❌ Araç verisi alınamadı (Kod: {d_res.status_code}): {d_res.text}")
     exit(1)
-
